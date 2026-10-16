@@ -78,7 +78,11 @@ async function fetchRepoContentsCloudflare(repo: string, githubToken?: string) {
   });
 
   if (!treeResponse.ok) {
-    throw new Error(`Failed to fetch repository tree: ${treeResponse.status}`);
+    throw new Error(
+      treeResponse.status === 403 || treeResponse.status === 429
+        ? `GitHub API rate limit exceeded while fetching ${repo}.`
+        : `Failed to fetch repository tree: ${treeResponse.status}`,
+    );
   }
 
   const treeData = (await treeResponse.json()) as any;
@@ -109,6 +113,9 @@ async function fetchRepoContentsCloudflare(repo: string, githubToken?: string) {
 
   // Fetch file contents in batches to avoid overwhelming the API
   const batchSize = 10;
+
+  let rateLimitExceeded = false;
+
   const fileContents = [];
 
   for (let i = 0; i < files.length; i += batchSize) {
@@ -125,7 +132,12 @@ async function fetchRepoContentsCloudflare(repo: string, githubToken?: string) {
         });
 
         if (!contentResponse.ok) {
+          if (contentResponse.status === 403 || contentResponse.status === 429) {
+            rateLimitExceeded = true;
+          }
+
           console.warn(`Failed to fetch ${file.path}: ${contentResponse.status}`);
+
           return null;
         }
 
@@ -156,6 +168,10 @@ async function fetchRepoContentsCloudflare(repo: string, githubToken?: string) {
     if (i + batchSize < files.length) {
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
+  }
+
+  if (rateLimitExceeded) {
+    throw new Error(`GitHub API rate limit exceeded while fetching ${repo}.`);
   }
 
   return fileContents;
@@ -302,7 +318,11 @@ export async function loader({ request, context }: { request: Request; context: 
   try {
     // Access environment variables from Cloudflare context or process.env
     const githubToken =
-      context?.cloudflare?.env?.GITHUB_TOKEN || process.env.GITHUB_TOKEN || process.env.VITE_GITHUB_ACCESS_TOKEN;
+      context?.cloudflare?.env?.BOLT_GITHUB_TOKEN ||
+      context?.cloudflare?.env?.GITHUB_TOKEN ||
+      process.env.BOLT_GITHUB_TOKEN ||
+      process.env.GITHUB_TOKEN ||
+      process.env.VITE_GITHUB_ACCESS_TOKEN;
 
     let fileList;
 

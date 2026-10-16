@@ -49,6 +49,8 @@ export const action = withSecurity(chatAction, {
 });
 
 async function chatAction({ context, request }: ActionFunctionArgs) {
+  console.log('[CHAT API HIT] chatAction entered');
+
   /*
    * Validation happens before any provider work, not inside the try block below.
    * `request.json<T>()` only asserts a TypeScript type — at runtime a crafted
